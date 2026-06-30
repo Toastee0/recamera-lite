@@ -19,7 +19,14 @@ Target hardware: **reCamera Gen1** (SG2002/CV181x RISC-V, OV5647 sensor) and
 | `install.sh` | scp the binary + scripts + model to a device and install the init script |
 | `model-build/` | TPU-MLIR recipe: YOLO11n `.pt` → INT8 `.cvimodel` |
 
-## Build
+## Get the binary
+
+**Prebuilt (no SDK needed):** grab `vision-recamera-sg2002-riscv64-musl` from the
+[Releases](https://github.com/Toastee0/recamera-lite/releases) page and skip to *Install*.
+It's a stripped RISC-V/musl ELF for the SG2002; it dynamically links the CVITEK MPI + TPU
+runtime that already ship **on the device** (`/mnt/system/lib`), so nothing else is needed.
+
+## Build from source
 
 You need the Seeed reCamera **SG2002 SDK** and the **riscv64 musl toolchain** (multi-GB,
 not vendored here — get them from <https://github.com/Seeed-Studio/reCamera-OS>). Then:
