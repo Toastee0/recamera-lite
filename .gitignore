@@ -1,0 +1,18 @@
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# models / weights (download or build your own)
+*.pt
+*.cvimodel
+*.onnx
+
+# build artifacts
+edge/src/vision
+edge/src/*.o
+
+# runtime data
+server/data/
+*.log

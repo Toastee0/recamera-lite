@@ -1,0 +1,22 @@
+# recamera-lite GPU server — systemd unit template.
+# Edit User/paths/env, then:
+#   sudo cp recamera-server.service /etc/systemd/system/
+#   sudo systemctl enable --now recamera-server
+[Unit]
+Description=recamera-lite two-tier vision GPU server
+After=network.target
+
+[Service]
+User=YOUR_USER
+WorkingDirectory=/opt/recamera-lite/server
+# Point at your venv's python (one with a CUDA torch + ultralytics installed):
+ExecStart=/opt/recamera-lite/server/.venv/bin/python /opt/recamera-lite/server/server.py
+Environment=YOLO_MODEL=yolo11x.pt
+Environment=YOLO_IMGSZ=1280
+Environment=YOLO_CONF=0.35
+# Environment=SAVE_DIR=/opt/recamera-lite/server/data
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

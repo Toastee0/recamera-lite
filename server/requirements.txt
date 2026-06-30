@@ -1,0 +1,8 @@
+# recamera-lite server — the only third-party deps are the YOLO runtime.
+# For GPU, install a CUDA build of torch matching your driver FIRST, e.g.:
+#   pip install torch --index-url https://download.pytorch.org/whl/cu124
+# then:  pip install -r requirements.txt
+ultralytics>=8.3
+pillow>=10
+# torch is pulled in by ultralytics, but pin a CUDA build yourself for GPU (see above).
+torch>=2.2

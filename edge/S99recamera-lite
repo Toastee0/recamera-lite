@@ -1,0 +1,49 @@
+#!/bin/sh
+# S99recamera-lite — boot autostart for the recamera-lite vision daemon.
+# Reads /userdata/recamera-lite.conf (SERVER, CAM_NAME, MODEL, SALCONF, FPSMAX, EXTRA)
+# and /userdata/sensor.conf (written by camdetect). Install as /etc/init.d/S99recamera-lite.
+VISION=/userdata/vision
+CAMDETECT=/userdata/camdetect.sh
+SENSORCONF=/userdata/sensor.conf
+CONF=/userdata/recamera-lite.conf
+LOG=/userdata/vision.log
+export LD_LIBRARY_PATH=/mnt/system/usr/lib:/mnt/system/usr/lib/3rd:/mnt/system/lib
+
+start() {
+  killall vision 2>/dev/null
+  # silence the red heartbeat LED (kernel re-arms its trigger every boot)
+  echo none > /sys/class/leds/red/trigger 2>/dev/null
+  echo 0 > /sys/class/leds/red/brightness 2>/dev/null
+
+  # defaults, overridden by the config file
+  SERVER=; CAM_NAME=auto; MODEL=/userdata/Models/yolo11n_ours.cvimodel
+  SALCONF=0.35; FPSMAX=15; EXTRA=
+  [ -f "$CONF" ] && . "$CONF"
+
+  # refresh the sensor descriptor, then derive sensor flag + (if auto) the cam name
+  [ -x "$CAMDETECT" ] && "$CAMDETECT" >/dev/null 2>&1
+  SENSOR=; FLAG=
+  [ -f "$SENSORCONF" ] && . "$SENSORCONF"
+  if [ "$CAM_NAME" = "auto" ]; then
+    case "$SENSOR" in
+      GC2053) CAM_NAME=recamera-hq ;;
+      *)      CAM_NAME=recamera ;;
+    esac
+  fi
+
+  EVT=
+  [ -n "$SERVER" ] && EVT="-evt $SERVER"
+  if [ ! -x "$VISION" ]; then
+    echo "S99recamera-lite: $VISION missing" >&2; exit 1
+  fi
+  echo "S99recamera-lite: vision sensor=$SENSOR name=$CAM_NAME server=${SERVER:-none}"
+  setsid env LD_LIBRARY_PATH="$LD_LIBRARY_PATH" "$VISION" $FLAG \
+    -model "$MODEL" -salconf "$SALCONF" -fpsmax "$FPSMAX" \
+    -name "$CAM_NAME" $EVT $EXTRA >"$LOG" 2>&1 </dev/null &
+}
+case "$1" in
+  start)   start ;;
+  stop)    killall vision 2>/dev/null ;;
+  restart) killall vision 2>/dev/null; sleep 2; start ;;
+  *)       echo "usage: $0 {start|stop|restart}" ;;
+esac

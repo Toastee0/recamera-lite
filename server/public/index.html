@@ -1,0 +1,109 @@
+<!doctype html><html><head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1">
+<title>recamera-lite</title><style>
+*{box-sizing:border-box}
+body{margin:0;background:#0e1116;color:#d7dde5;font:15px/1.4 system-ui,sans-serif}
+header{padding:12px 16px;background:#151a21;border-bottom:1px solid #232b36;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+h1{font-size:18px;margin:0}
+.hint{font-size:12px;color:#6b7686}
+.spacer{flex:1}
+.chip{display:inline-block;background:#10202c;border:1px solid #1d4a6e;border-radius:20px;padding:2px 10px;font-size:12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:14px;padding:14px 16px}
+.card{background:#151a21;border:1px solid #232b36;border-radius:12px;overflow:hidden;display:flex;flex-direction:column}
+.card.active{border-color:#2c8fde;box-shadow:0 0 0 1px #2c8fde55}
+.chead{display:flex;align-items:center;gap:9px;padding:10px 13px;border-bottom:1px solid #232b36}
+.dot{width:9px;height:9px;border-radius:50%;background:#3a4452;flex:0 0 auto}
+.card.active .dot{background:#54d18a;box-shadow:0 0 7px #54d18a;animation:pulse 1.4s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+.nm{font-weight:600}.host{font-size:11px;color:#6b7686}.st{margin-left:auto;font-size:12px;color:#8fa0b2}
+.view{position:relative;background:#000;aspect-ratio:16/9;display:flex;align-items:center;justify-content:center}
+.view img{width:100%;height:100%;object-fit:contain;display:block}
+.view .ph{color:#5b6675;font-size:13px;text-align:center;padding:30px}
+.body{padding:11px 13px;display:flex;flex-direction:column;gap:9px}
+.threat{display:flex;align-items:center;gap:9px}
+.threat .lab{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#8fa0b2;width:54px}
+.meter{flex:1;height:14px;border-radius:8px;background:#0b0e12;border:1px solid #232b36;overflow:hidden}
+.meter .fill{height:100%;width:0;border-radius:8px;transition:width .4s,background .4s}
+.fps{font-variant-numeric:tabular-nums;font-weight:700;font-size:15px;min-width:64px;text-align:right}
+.fps small{font-weight:400;color:#7a8696;font-size:11px}
+.dets{display:flex;flex-wrap:wrap;gap:4px;min-height:22px}
+.det{border-radius:20px;padding:2px 9px;font-size:12px;border:1px solid #1d4a6e;background:#10202c}
+.det.person{border-color:#2f8f4f;background:#12241a;color:#bfeccd}
+.panel{margin:0 16px 16px;background:#151a21;border:1px solid #232b36;border-radius:12px;padding:12px 14px}
+.panel h3{margin:0 0 8px;font-size:13px;color:#8fb6d6}
+.feed{max-height:240px;overflow:auto;font-size:13px}
+.feed .ev{display:flex;gap:9px;padding:4px 0;border-bottom:1px solid #1a2029}
+.feed .t{color:#6b7686;font-variant-numeric:tabular-nums;flex:0 0 64px}
+.feed .c{color:#9fb6cc;flex:0 0 110px}
+a{color:#5ab0f0;text-decoration:none}
+</style></head><body>
+<header>
+  <h1>📷 recamera-lite</h1>
+  <span class=hint>edge NPU gates · GPU confirms · <b style=color:#cfe0ef>FPS = threat level</b></span>
+  <span class=spacer></span>
+  <span class=chip id=meta>…</span>
+  <a href="/health" target=_blank>health</a>
+</header>
+<div class=grid id=cards></div>
+<div class=panel>
+  <h3>👁️ Confirmed sightings <span class=hint>(GPU ran only because the edge gated)</span></h3>
+  <div class=feed id=feed><span class=hint>none yet</span></div>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+const threatColor=t=>`hsl(${(1-Math.min(1,Math.max(0,t)))*120},75%,48%)`;
+const fmt=ms=>new Date(ms).toTimeString().slice(0,8);
+const imgTimers={};
+
+function card(name,s){
+  const id='c-'+name.replace(/[^a-z0-9]/gi,'');
+  let el=$(id);
+  if(!el){ el=document.createElement('div'); el.id=id; el.className='card';
+    el.innerHTML=`<div class=chead><span class=dot></span><span class=nm>${name}</span>
+      <span class=host id=h-${id}></span><span class=st id=st-${id}></span></div>
+      <div class=view id=v-${id}><div class=ph>idle — no salience</div></div>
+      <div class=body>
+        <div class=threat><span class=lab>threat</span><div class=meter><div class=fill id=m-${id}></div></div>
+          <span class=fps id=f-${id}>0<small> fps</small></span></div>
+        <div class=dets id=d-${id}></div></div>`;
+    $('cards').appendChild(el);
+  }
+  el.classList.toggle('active',s.active);
+  $('h-'+id).textContent=s.host||'';
+  $('st-'+id).textContent=s.active?('● ACTIVE '+s.activeFor+'s'):'idle';
+  $('m-'+id).style.width=Math.round(Math.min(1,s.threat||0)*100)+'%';
+  $('m-'+id).style.background=threatColor(s.threat||0);
+  $('f-'+id).innerHTML=(s.fps||0).toFixed(1)+'<small> fps</small>';
+  const gpu=(s.gpu&&s.gpu.detections)||[];
+  const edge=(s.dets||[]).map(d=>`<span class="det ${d.l==='person'?'person':''}">edge:${d.l} ${(d.c*100|0)}%</span>`).join('');
+  const g=gpu.map(d=>`<span class="det ${d.label==='person'?'person':''}">${d.label} ${(d.conf*100|0)}%</span>`).join('');
+  $('d-'+id).innerHTML=edge+g||'<span class=hint>—</span>';
+  const v=$('v-'+id);
+  if(s.active){
+    if(!v.querySelector('img')){ v.innerHTML=`<img id=i-${id} alt="${name}">`; }
+    if(!imgTimers[id]){ const refresh=()=>{ const im=$('i-'+id); if(im) im.src='/api/latest/'+name+'?t='+Date.now(); };
+      refresh(); imgTimers[id]=setInterval(refresh,700); }
+  } else if(imgTimers[id]){ clearInterval(imgTimers[id]); delete imgTimers[id];
+    v.innerHTML='<div class=ph>idle — no salience<br><span class=hint>frames appear when something is in view</span></div>'; }
+}
+
+async function poll(){
+  try{ const d=await (await fetch('/api/events')).json();
+    const names=Object.keys(d.cams); const act=names.filter(n=>d.cams[n].active).length;
+    $('meta').textContent=`${names.length} cam${names.length===1?'':'s'} · ${act} active`;
+    for(const n of names) card(n,d.cams[n]);
+  }catch{ $('meta').textContent='server unreachable'; }
+}
+async function pollS(){
+  try{ const d=await (await fetch('/api/sightings')).json();
+    const r=(d.recent||[]).slice(-40).reverse();
+    $('feed').innerHTML=r.map(s=>{ const g=(s.gpu||[]).map(x=>`${x.label} ${(x.conf*100|0)}%`).join(', ');
+      return `<div class=ev><span class=t>${fmt(s.ts)}</span><span class=c>${s.cam}</span>
+        <span>${g||'—'} <span class=hint>· threat ${(s.threat||0).toFixed(2)}</span></span></div>`; }).join('')
+      ||'<span class=hint>none yet</span>';
+  }catch{}
+}
+poll(); pollS();
+setInterval(poll,1000); setInterval(pollS,3000);
+</script>
+</body></html>

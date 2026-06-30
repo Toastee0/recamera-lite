@@ -1,0 +1,9 @@
+recamera-lite
+Copyright 2026 Toastee0
+
+Licensed under the Apache License, Version 2.0 (the "License"); see LICENSE.
+
+This product includes software that targets the Seeed Studio reCamera and links the
+Seeed/Sophgo CVITEK MPI and TPU runtime SDKs at build time. Those SDKs are provided by
+Seeed/Sophgo under their own licenses and are NOT redistributed in this repository.
+YOLO models are obtained from Ultralytics under their respective licenses.
