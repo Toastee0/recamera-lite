@@ -35,6 +35,9 @@ static CVI_S16 gLanes[5] = {2, 0, 3, -1, -1};
 static SAMPLE_SNS_TYPE_E gSnsType = OV_OV5647_MIPI_2M_30FPS_10BIT;
 static CVI_S32 gI2cAddr = 0x36;
 static CVI_U8  gOrien   = 1;
+static int     gOrienOverride = -1;   // -orien N (0=normal 1=mirror 2=flip 3=mirror+flip); -1 = sensor default
+static int     gRbSwap  = -1;         // -rbswap 0|1 (or /userdata/rbswap): swap ISP Bayer R<->B for an
+                                      // orientation-INDEPENDENT red/blue channel swap. -1 = per-sensor default.
 static const char *gSnsName = "OV5647";
 static const char *gPqBin = "/mnt/cfg/param/ov_ov5647_sdr.bin";
 static const char *gModel = "/userdata/Models/yolo11n_ours.cvimodel";
@@ -119,6 +122,27 @@ static void loadPqBin(const char *path){
         CVI_S32 r=CVI_BIN_ImportBinData(buf,(CVI_U32)sz);
         printf("[vision] PQ bin %s (%ld) rc=0x%x\n",path,sz,r); }
     free(buf); fclose(fp);
+}
+
+// --- Bayer R/B fix via linker --wrap (gRbSwap): the reCamera's OV5647 raw Bayer is
+// RG(RGGB) but the SDK's per-sensor default resolves it to BG(BGGR) -> a clean,
+// orientation-independent red/blue channel swap (the GC2053 is unaffected). Correct
+// it across the R/B diagonal (v -> 3-v) at the SDK's sensor->attr resolvers, so it's
+// applied BEFORE the ISP initialises (AE/AWB come up normally; no post-init restart).
+// The VI device enBayerFormat is the demosaic determinant; the ISP pub enBayer is
+// kept in step. Needs -Wl,--wrap on both resolvers (see the Makefile).
+extern "C" CVI_S32 __real_SAMPLE_COMM_VI_GetDevAttrBySns(SAMPLE_SNS_TYPE_E, VI_DEV_ATTR_S*);
+extern "C" CVI_S32 __wrap_SAMPLE_COMM_VI_GetDevAttrBySns(SAMPLE_SNS_TYPE_E t, VI_DEV_ATTR_S *a){
+    CVI_S32 r=__real_SAMPLE_COMM_VI_GetDevAttrBySns(t,a);
+    if(gRbSwap==1 && a){ int o=(int)a->enBayerFormat; a->enBayerFormat=(BAYER_FORMAT_E)(3-o);
+        printf("[vision] rbswap: VI dev Bayer %d -> %d\n",o,(int)a->enBayerFormat); }
+    return r;
+}
+extern "C" CVI_S32 __real_SAMPLE_COMM_ISP_GetIspAttrBySns(SAMPLE_SNS_TYPE_E, ISP_PUB_ATTR_S*);
+extern "C" CVI_S32 __wrap_SAMPLE_COMM_ISP_GetIspAttrBySns(SAMPLE_SNS_TYPE_E t, ISP_PUB_ATTR_S *a){
+    CVI_S32 r=__real_SAMPLE_COMM_ISP_GetIspAttrBySns(t,a);
+    if(gRbSwap==1 && a){ int o=(int)a->enBayer; a->enBayer=(ISP_BAYER_FORMAT_E)(3-o); }
+    return r;
 }
 
 // Custom VB pool config: SAMPLE_PLAT_SYS_INIT makes ONE 3-block pool sized for the
@@ -532,6 +556,8 @@ int main(int argc,const char*argv[]){
         }
         else if(!strcmp(argv[i],"-gc2053")) setSensor("GC2053");
         else if(!strcmp(argv[i],"-ov5647")) setSensor("OV5647");
+        else if(!strcmp(argv[i],"-orien")&&i+1<argc){ int o=atoi(argv[++i]); if(o>=0&&o<=3) gOrienOverride=o; }
+        else if(!strcmp(argv[i],"-rbswap")&&i+1<argc){ gRbSwap=atoi(argv[++i])?1:0; }
         else if(!strcmp(argv[i],"-lanes")&&i+1<argc){ char b[64]; snprintf(b,sizeof(b),"%s",argv[++i]);
             int n=0; for(char*t=strtok(b,",");t&&n<5;t=strtok(NULL,",")) gLanes[n++]=(CVI_S16)atoi(t); }
     }
@@ -540,6 +566,21 @@ int main(int argc,const char*argv[]){
         if(readSensorConf("/userdata/sensor.conf")) printf("[vision] sensor=%s (from /userdata/sensor.conf)\n",gSnsName);
         else printf("[vision] no -gc2053/-ov5647 flag or sensor.conf; default %s\n",gSnsName);
     }
+    // Orientation override: -orien arg wins; else /userdata/orien file (persists across
+    // reboots + survives camdetect regenerating sensor.conf). 0=normal 1=mirror 2=flip
+    // 3=mirror+flip. Applied after sensor selection so arg order doesn't matter.
+    if(gOrienOverride<0){
+        FILE*of=fopen("/userdata/orien","r");
+        if(of){ int o; if(fscanf(of,"%d",&o)==1 && o>=0 && o<=3) gOrienOverride=o; fclose(of); }
+    }
+    if(gOrienOverride>=0){ gOrien=(CVI_U8)gOrienOverride; printf("[vision] orientation override -> %d\n",gOrien); }
+    // Bayer R/B swap: -rbswap arg > /userdata/rbswap file > per-sensor default (the
+    // reCamera OV5647 needs it; the GC2053 does not).
+    if(gRbSwap<0){
+        FILE*rf=fopen("/userdata/rbswap","r");
+        if(rf){ int v; if(fscanf(rf,"%d",&v)==1) gRbSwap=v?1:0; fclose(rf); }
+    }
+    if(gRbSwap<0) gRbSwap = (gSnsName && !strcmp(gSnsName,"OV5647")) ? 1 : 0;
 
     if(gNpuOn){
         if(!gYolo.load(gModel)){ printf("[vision] model load failed; NPU disabled\n"); gNpuOn=false; }

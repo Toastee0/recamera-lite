@@ -39,8 +39,10 @@ COMMON  := -lpthread -latomic -lm
 all: vision
 
 # vision — the production daemon (RTSP + NPU salience + threat-gated JPEG + UDP events)
+# --wrap lets vision.cpp intercept the SDK sensor->Bayer resolvers to fix the OV5647 R/B swap
+WRAP := -Wl,--wrap=SAMPLE_COMM_VI_GetDevAttrBySns -Wl,--wrap=SAMPLE_COMM_ISP_GetIspAttrBySns
 vision: vision.cpp yolo.cpp yolo.h
-	$(CXX) $(CXXFLAGS) -o $@ vision.cpp yolo.cpp $(PIPE_STATIC) $(PIPE_DYN) $(TPU_DYN) $(COMMON)
+	$(CXX) $(CXXFLAGS) -o $@ vision.cpp yolo.cpp $(PIPE_STATIC) $(PIPE_DYN) $(TPU_DYN) $(COMMON) $(WRAP)
 
 clean:
 	rm -f vision
