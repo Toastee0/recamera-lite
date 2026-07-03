@@ -580,7 +580,8 @@ int main(int argc,const char*argv[]){
         FILE*rf=fopen("/userdata/rbswap","r");
         if(rf){ int v; if(fscanf(rf,"%d",&v)==1) gRbSwap=v?1:0; fclose(rf); }
     }
-    if(gRbSwap<0) gRbSwap = (gSnsName && !strcmp(gSnsName,"OV5647")) ? 1 : 0;
+    // Both reCamera sensors (OV5647 AND GC2053) come up R/B-swapped vs the SDK Bayer defaults.
+    if(gRbSwap<0) gRbSwap = (gSnsName && (!strcmp(gSnsName,"OV5647")||!strcmp(gSnsName,"GC2053"))) ? 1 : 0;
 
     if(gNpuOn){
         if(!gYolo.load(gModel)){ printf("[vision] model load failed; NPU disabled\n"); gNpuOn=false; }
